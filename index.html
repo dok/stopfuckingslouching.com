@@ -160,8 +160,8 @@
         } else {
           if (this.slouching) {
             this.slouching = false;
-            const diff = moment(this.end).diff(this.start, 'minutes');
-            this.notify(`Good job! You kept your posture for ${diff} minutes`);
+            const diff = moment(this.end).diff(this.start, 'seconds');
+            this.notify(`Good job! You kept your posture for ${diff} seconds`);
             this.start = new Date();
           }
           this.blinker.stop();
