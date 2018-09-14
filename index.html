@@ -1,0 +1,215 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title></title>
+  <script src="./lib/tracking.js"></script>
+  <script src="./lib/data/face-min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.10/lodash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.22.2/moment.min.js"></script>
+  <link href="https://fonts.googleapis.com/css?family=Raleway:800" rel="stylesheet">
+
+  <style>
+  .container {
+    position: relative;
+    padding: 20px;
+    background: black;
+    float: left;
+    margin-top: 20px;
+  }
+  .container canvas {
+    position: absolute;
+    background: white;
+    left: 20px;
+    top: 20px;
+  }
+  button {
+    width: 100%;
+    display: inline-block;
+    padding: 10px;
+    box-shadow: none;
+    background: white;
+    font-size: 25px;
+    border-radius: 0;
+    font-weight: 800;
+    font-family: 'Raleway', sans-serif;
+  }
+  button:focus {
+    outline: none
+  }
+  h1 {
+    font-size: 80px;
+    line-height: 1em;
+    font-family: 'Raleway', sans-serif;
+  }
+  body {
+    margin: 0;
+    padding: 30px 0 0 20px;
+    font-weight: 800;
+  }
+  </style>
+</head>
+<body>
+  <h1>STOP<br>FUCKING<br>SLOUCHING<br></h1>
+  <div class="container">
+    <video id="video" width="320" height="240" preload autoplay loop muted></video>
+    <canvas id="canvas" width="320" height="240"></canvas>
+    <div>
+      <button id="resetBtn">SIT UP STRAIGHT <br> CLICK THIS BUTTON</button>
+    </div>
+  </div>
+
+  <script>
+    const btn = document.getElementById('resetBtn');
+    class Blinker {
+      constructor() {
+        this.timeout = null;
+        this.started = false;
+      }
+      start(text) {
+        if (this.started) return;
+
+        let visible = true;
+        this.started = true;
+        this.timeout = setInterval(function(){
+          document.title = visible ? text : '';
+          visible = !visible;
+        }, 1000);
+      }
+      stop() {
+        this.started = false;
+        document.title = '';
+        clearTimeout(this.timeout);
+      }
+    }
+
+    class Slouchy {
+      constructor () {
+        this.initialRect = null;
+
+        this.blinker = new Blinker();
+        this.notify = _.once(this._notify);
+        this.notificationPermissionGranted = false;
+        this.slouching = false;
+        this.canvas = document.getElementById('canvas');
+        this.video = document.getElementById('video');
+
+        Notification.requestPermission().then((result) => {
+          this.notificationPermissionGranted = result === 'granted';
+        });
+      }
+
+      _notify(text) {
+        if (this.notificationPermissionGranted) {
+          new Notification(text);
+          setTimeout(() => {
+            this.notify = _.once(this._notify);
+          }, 1000)
+        }
+      }
+
+      isSlouching(currentY) {
+        // console.log('isSlouching: ', currentY, this.initialRect.y);
+        const deviation = 20;
+
+        return currentY > this.initialRect.y + deviation;
+      }
+
+      drawRect(rect) {
+        var canvas = document.getElementById('canvas');
+        var context = canvas.getContext('2d');
+
+
+        context.strokeStyle = '#000';
+        context.lineWidth = 3;
+        context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+        context.font = '30px Helvetica';
+        context.fillStyle = "#000";
+
+        const half = rect.width / 2;
+        if (this.isSlouching(rect.y)) {
+          context.fillText('(◕︵◕)', rect.x + 10 , rect.y + half);
+        } else {
+          context.fillText('(◕◡◕)', rect.x + 10, rect.y + half);
+        }
+
+        // context.fillText('x: ' + rect.x + 'px', rect.x + rect.width + 5, rect.y + 11);
+        // context.fillText('y: ' + rect.y + 'px', rect.x + rect.width + 5, rect.y + 22);
+      }
+
+      dualButton() {
+        if (this.initialRect) {
+          this.initialRect = null;
+        } else {
+          this.load();
+        }
+      }
+
+      process(rect) {
+        var context = this.canvas.getContext('2d');
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        if (!this.initialRect) {
+          this.initialRect = rect;
+        }
+
+        if (this.isSlouching(rect.y)) {
+          this.blinker.start('YOU\'RE SLOUCHING!');
+          this.slouching = true;
+          this.end = new Date();
+          this.notify('You\'re slouching!');
+        } else {
+          if (this.slouching) {
+            this.slouching = false;
+            const diff = moment(this.end).diff(this.start, 'minutes');
+            this.notify(`Good job! You kept your posture for ${diff} minutes`);
+            this.start = new Date();
+          }
+          this.blinker.stop();
+        }
+
+        this.drawRect(rect);
+      }
+
+      load () {
+        var tracker = new tracking.ObjectTracker('face');
+        tracking.initUserMedia_(this.video, {
+          camera: true
+        });
+        const width = this.video.width;
+        const height = this.video.height;
+
+        this.start = new Date();
+
+        this.tracker = tracker;
+
+        tracker.setInitialScale(4);
+        tracker.setStepSize(2);
+        tracker.setEdgesDensity(0.1);
+
+        btn.innerHTML = 'RESET'
+
+        this.intervalId = setInterval(() => {
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.width = width;
+          canvas.height = height;
+          context.drawImage(this.video, 0, 0, width, height);
+          const imageData = context.getImageData(0, 0, width, height);
+          const results = tracker.track(imageData.data, width, height);
+
+          if (results.length) {
+            this.process(results[0]);
+          }
+        }, 500);
+      }
+    }
+
+    const slouchy = new Slouchy();
+    window.onbeforeunload = () => {
+      slouchy.tracker.emit('stop');
+    }
+    btn.addEventListener('click', slouchy.dualButton.bind(slouchy));
+  </script>
+
+</body>
+</html>
